@@ -39,15 +39,55 @@
     return Constructor;
   }
 
+  var oldArrayProtoMethods = Array.prototype; // 数组原型上的方法
+  // 不能直接改写数组原有方法 不可靠，因为只有被vue控制的数组才需要改写
+
+  var arrayMethods = Object.create(Array.prototype);
+  var methods = ['push', 'pop', 'shift', 'unshift', 'splice', 'reverse', 'sort'];
+  methods.forEach(function (method) {
+    arrayMethods[method] = function () {
+      var _oldArrayProtoMethods;
+
+      // 重写数组方法
+      console.log('数组变化');
+
+      for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
+        args[_key] = arguments[_key];
+      }
+
+      var result = (_oldArrayProtoMethods = oldArrayProtoMethods[method]).call.apply(_oldArrayProtoMethods, [this].concat(args));
+
+      return result;
+    };
+  });
+  arrayMethods.push(1, 2, 3, 4);
+
   var Observer = /*#__PURE__*/function () {
     function Observer(value) {
       _classCallCheck(this, Observer);
 
       // 需要对这个value属性重新定义
-      this.walk(value);
+      // value 可能是对象 可能是数组 分类来处理
+      if (Array.isArray(value)) {
+        // 数组不用defineProperty来进行代理 性能不好
+        // push shift reverse sort 
+        // value.__proto__ = arrayMethods; // 当是数组时 改写方法为自己重写后的方法
+        Object.setPrototypeOf(value, arrayMethods); // 循环将属性赋予上去
+
+        this.observeArray(value);
+      } else {
+        this.walk(value);
+      }
     }
 
     _createClass(Observer, [{
+      key: "observeArray",
+      value: function observeArray(value) {
+        for (var i = 0; i < value.length; i++) {
+          observe(value[i]);
+        }
+      }
+    }, {
       key: "walk",
       value: function walk(data) {
         // 将对象中的所有key 重新用defineProperty 定义成响应式的
@@ -61,12 +101,17 @@
   }();
 
   function defineReactive(data, key, value) {
+    // value 可能使用一个对象
+    observe(value); // 对结果递归拦截
+
     Object.defineProperty(data, key, {
       get: function get() {
         return value;
       },
       set: function set(newValue) {
         if (newValue === value) return;
+        observe(newValue); // 如果用户设置的是一个对象，就继续将用户设置的对象变成响应式的
+
         value = newValue;
       }
     });
